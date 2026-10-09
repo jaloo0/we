@@ -1,28 +1,57 @@
-name: Video Automation Bot
+name: Run Bulbulay Automation Bot
+
 on:
-  workflow_dispatch: # Allows manual run button
+  schedule:
+    - cron: '0 0 * * *' # Runs daily at midnight
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
-  run-bot:
+  automation:
     runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.10'
+          cache: 'pip'
 
       - name: Install System Dependencies
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          curl -fsSL https://deno.land/install.sh | sh
+          echo "$HOME/.deno/bin" >> $GITHUB_PATH
 
-      - name: Install Python Libraries
-        run: pip install -r requirements.txt
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install yt-dlp moviepy requests google-genai git+https://github.com/openai/whisper.git torch torchvision torchaudio
 
-      - name: Run Automation
+      - name: Run Automation Script
         env:
-            GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-            GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-            GDRIVE_SERVICE_TOKEN: ${{ secrets.GDRIVE_SERVICE_TOKEN }}
-        run: python main.py
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          # Automatically select mode based on available secrets
+          if [ -n "$GOOGLE_API_KEY" ]; then
+            echo "Starting in Gemini AI mode..."
+            python main.py --mode gemini
+          elif [ -n "$OPENROUTER_API_KEY" ]; then
+            echo "Starting in OpenRouter AI mode..."
+            python main.py --mode openrouter
+          else
+            echo "No API keys found, falling back to Local Heuristics mode..."
+            python main.py --mode local
+          fi
+
+      - name: Upload Processed Video
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-comedy-remix
+          path: bulbulay_unified_remix.mp4
+          retention-days: 5
