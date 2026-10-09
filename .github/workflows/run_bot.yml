@@ -32,11 +32,11 @@ jobs:
 
       - name: Run Automation Script
         env:
-          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           # Automatically select mode based on available secrets
-          if [ -n "$GOOGLE_API_KEY" ]; then
+          if [ -n "$GEMINI_API_KEY" ]; then
             echo "Starting in Gemini AI mode..."
             python main.py --mode gemini
           elif [ -n "$OPENROUTER_API_KEY" ]; then
