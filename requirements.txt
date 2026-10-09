@@ -1,7 +1,4 @@
-torch
-google-generativeai
-requests
+yt-dlp
 python-dotenv
-opencv-python
-moviepy<2.0.0
-yt-dlp>=2024.8.6
+scenedetect[opencv]
+moviepy
