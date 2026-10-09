@@ -1,0 +1,28 @@
+name: Video Automation Bot
+on:
+  workflow_dispatch: # Allows manual run button
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install System Dependencies
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Python Libraries
+        run: pip install -r requirements.txt
+
+      - name: Run Automation
+        env:
+            GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+            GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+            GDRIVE_SERVICE_TOKEN: ${{ secrets.GDRIVE_SERVICE_TOKEN }}
+        run: python main.py
