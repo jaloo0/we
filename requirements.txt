@@ -1,4 +1,6 @@
-moviepy<2.0.0
-requests
+torch
 google-generativeai
+requests
 python-dotenv
+opencv-python
+moviepy
