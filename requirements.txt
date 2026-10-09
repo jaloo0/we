@@ -3,4 +3,5 @@ google-generativeai
 requests
 python-dotenv
 opencv-python
-moviepy
+moviepy<2.0.0
+yt-dlp
