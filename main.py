@@ -1,6 +1,6 @@
 from pytubefix import YouTube
 from pytubefix.cli import on_progress
-os import
+import os
 
 def download_youtube_video(url, output_path="."):
     """
