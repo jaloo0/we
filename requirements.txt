@@ -3,3 +3,5 @@ python-dotenv
 scenedetect[opencv]
 moviepy<2.0.0
 pytubefix
+faster-whisper
+requests
