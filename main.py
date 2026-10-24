@@ -1,4 +1,4 @@
-# Pakistani Comedy Shorts Studio — CLI/GitHub Action Version
+# Pakistani Comedy Shorts Studio â CLI/GitHub Action Version
 import os, sys, re, json, time, shutil, subprocess, traceback, zipfile
 from pathlib import Path
 import yt_dlp
@@ -9,10 +9,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configuration from environment variables
-SOURCE_URL = os.getenv('SOURCE_URL')
-OPENROUTER_API_KEY = os.getenv('GOOGLE_API_KEY')
+SOURCE_URL = os.getenv('SOURCE_URL', 'https://www.youtube.com/watch?v=ZKx6VvrVXtc')
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 SHOW_NAME = os.getenv('SHOW_NAME', 'Hansna Mana Hai')
-AI_MODEL = os.getenv('AI_MODEL', 'openai/gpt-4o-mini')
+AI_MODEL = os.getenv('AI_MODEL', 'google/gemma-4-26b-a4b-it:free')
 WHISPER_MODEL_NAME = os.getenv('WHISPER_MODEL', 'small')
 LANG_CODE = os.getenv('LANGUAGE', 'ur')
 CLIP_COUNT = int(os.getenv('CLIP_COUNT', '5'))
@@ -75,7 +75,7 @@ def download_video_range(video_url, start_sec, end_sec, target_dir):
 ROOT = Path('pakistani_comedy_shorts'); ROOT.mkdir(parents=True, exist_ok=True)
 SRC = ROOT/'source'; OUT = ROOT/'shorts'; REP = ROOT/'reports'
 for p in (SRC, OUT, REP): p.mkdir(parents=True, exist_ok=True)
-SHOWS = {'Hansna Mana Hai':['hansna mana hai','hasna mana hai'], 'Mazaaq Raat':['mazaaq raat','mazak raat','mazāq raat']}
+SHOWS = {'Hansna Mana Hai':['hansna mana hai','hasna mana hai'], 'Mazaaq Raat':['mazaaq raat','mazak raat','mazÄq raat']}
 
 def parse_json(s):
     s = re.sub(r'^```(?:json)?\s*|\s*```$', '', s.strip(), flags=re.I)
@@ -154,7 +154,7 @@ def render(clip_video, rows, c, index):
 
 def run():
     try:
-        if not SOURCE_URL or not OPENROUTER_API_KEY: raise ValueError("Missing SOURCE_URL or GOOGLE_API_KEY (OpenRouter).")
+        if not SOURCE_URL or not OPENROUTER_API_KEY: raise ValueError("Missing SOURCE_URL or OPENROUTER_API_KEY.")
         job = SRC/str(int(time.time())); job.mkdir(parents=True, exist_ok=True)
         print(f"Processing: {SOURCE_URL}")
         info = json.loads(cmd(['yt-dlp', '--dump-single-json', '--no-playlist', SOURCE_URL], capture=True).stdout)
