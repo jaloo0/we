@@ -1,4 +1,5 @@
 # Pakistani Comedy Shorts Studio â CLI/GitHub Action Version
+import random
 import os, sys, re, json, time, shutil, subprocess, traceback, zipfile
 from pathlib import Path
 import yt_dlp
@@ -21,22 +22,31 @@ MAX_LEN = int(os.getenv('MAX_LEN', '55'))
 BURN_SUBS = os.getenv('BURN_SUBS', 'True').lower() == 'true'
 BLUR_BG = os.getenv('BLUR_BG', 'True').lower() == 'true'
 
+
+BROWSER_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Sec-Fetch-Mode': 'navigate',
+}
 # YouTube Cookies handling
 COOKIES_FILE = Path('cookies.txt')
 if os.getenv('YOUTUBE_COOKIES'):
     COOKIES_FILE.write_text(os.getenv('YOUTUBE_COOKIES'))
 
-def cmd(args, capture=False, check=True):
-    return subprocess.run(args, check=check, text=True, capture_output=capture)
-
 class QuietProgressLogger:
-    def debug(self, msg): pass
+    def debug(self, msg):
+        if "[download]" in msg and "%" in msg:
+            print(".", end="", flush=True)
+    def info(self, msg): pass
+    def warning(self, msg): pass
+    def error(self, msg): print(f"\nyt-dlp Error: {msg}")
     def info(self, msg): pass
     def warning(self, msg): pass
     def error(self, msg): print(f"yt-dlp: {msg}")
 
 def ydl_common():
-    opts = {"quiet": True, "no_warnings": True, "logger": QuietProgressLogger(), "noplaylist": True}
+    opts = {"quiet": True, "no_warnings": True, "logger": QuietProgressLogger(), "noplaylist": True, "http_headers": BROWSER_HEADERS}
     if COOKIES_FILE.exists():
         opts['cookiefile'] = str(COOKIES_FILE)
     return opts
@@ -159,6 +169,7 @@ def run():
         print(f"Processing: {SOURCE_URL}")
         with yt_dlp.YoutubeDL(ydl_common()) as ydl:
             info = ydl.extract_info(SOURCE_URL, download=False)
+            time.sleep(random.randint(3, 7))  # Avoid rate limits
         duration = float(info.get('duration', 0))
         audio_source = download_audio_only(SOURCE_URL, job)
         wav = job/'audio.wav'
