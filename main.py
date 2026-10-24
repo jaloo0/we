@@ -42,8 +42,14 @@ class QuietProgressLogger:
     def warning(self, msg): pass
     def error(self, msg): print(f"\nyt-dlp Error: {msg}")
     def info(self, msg): pass
+class QuietProgressLogger:
+    def debug(self, msg):
+        if "[download]" in msg and "%" in msg: print(".", end="", flush=True)
+    def info(self, msg): pass
     def warning(self, msg): pass
-    def error(self, msg): print(f"yt-dlp: {msg}")
+    def error(self, msg): print(f"\nyt-dlp: {msg}")
+
+def cmd(args): subprocess.run(args, check=True)
 
 def ydl_common():
     opts = {"quiet": True, "no_warnings": True, "logger": QuietProgressLogger(), "noplaylist": True, "http_headers": BROWSER_HEADERS}
@@ -51,38 +57,21 @@ def ydl_common():
         opts['cookiefile'] = str(COOKIES_FILE)
     return opts
 
-def download_audio_only(video_url, job):
-    template = str(job / "source_audio.%(ext)s")
+def download_full_video(video_url, job):
+    template = str(job / "source_video.%(ext)s")
     opts = ydl_common()
-    opts.update({"format": "bestaudio[ext=m4a]/bestaudio", "outtmpl": template,
-                 "overwrites": True, "continuedl": True})
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([video_url])
-    audio_files = [p for p in job.glob("source_audio.*") if p.suffix.lower() in (".m4a", ".webm", ".opus", ".mp3", ".aac", ".ogg")]
-    if not audio_files:
-        raise RuntimeError("yt-dlp did not produce an audio-only file.")
-    return max(audio_files, key=lambda p: p.stat().st_size)
-
-def download_video_range(video_url, start_sec, end_sec, target_dir):
-    target_dir.mkdir(parents=True, exist_ok=True)
-    template = str(target_dir / "selected_scene.%(ext)s")
-    opts = ydl_common()
+    # Target lowest resolution (worst) but try to keep it at or above 144p if possible
     opts.update({
-        "format": "bestvideo[height<=720]+bestaudio/best[height<=720]",
+        "format": "worstvideo[height>=144]+worstaudio/worst",
         "outtmpl": template,
-        "merge_output_format": "mp4",
-        "download_ranges": yt_dlp.utils.download_range_func(None, [(float(start_sec), float(end_sec))]),
-        "force_keyframes_at_cuts": True,
         "overwrites": True,
+        "merge_output_format": "mp4",
     })
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([video_url])
-    clips = [p for p in target_dir.glob("selected_scene.*") if p.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov")]
-    if not clips: raise RuntimeError(f"Could not download range {start_sec}-{end_sec}s.")
-    clip = max(clips, key=lambda p: p.stat().st_size)
-    return clip
-
-ROOT = Path('pakistani_comedy_shorts'); ROOT.mkdir(parents=True, exist_ok=True)
+    videos = [v for v in job.glob("source_video.*") if v.suffix.lower() in (".mp4", ".mkv", ".webm", ".mov")]
+    if not videos: raise RuntimeError("Failed to download source video.")
+    return max(videos, key=lambda p: p.stat().st_size)
 SRC = ROOT/'source'; OUT = ROOT/'shorts'; REP = ROOT/'reports'
 for p in (SRC, OUT, REP): p.mkdir(parents=True, exist_ok=True)
 SHOWS = {'Hansna Mana Hai':['hansna mana hai','hasna mana hai'], 'Mazaaq Raat':['mazaaq raat','mazak raat','mazÄq raat']}
@@ -139,17 +128,7 @@ def review(candidates, rows, duration, minlen, maxlen):
     for c in sorted(kept, key=lambda x: x.get('score', 0), reverse=True):
         if all(min(c['end'], q['end']) - max(c['start'], q['start']) < 5 for q in unique):
             unique.append(c)
-        if len(unique) >= CLIP_COUNT: break
-    return sorted(unique, key=lambda x: x['start'])
-
-def write_srt(rows, start, end, path):
-    chosen = [r for r in rows if r['end']>start and r['start']<end]
-    with open(path, 'w', encoding='utf-8') as f:
-        for i, r in enumerate(chosen, 1):
-            a, b = max(0, r['start']-start), min(end-start, r['end']-start)
-            f.write(f"{i}\n{time.strftime('%H:%M:%S,000', time.gmtime(a))} --> {time.strftime('%H:%M:%S,000', time.gmtime(b))}\n{r['text']}\n\n")
-
-def render(clip_video, rows, c, index):
+def render(video_source, rows, c, index):
     start, end = c['start'], c['end']; duration = end - start
     srt = OUT/f'clip_{index:02}.srt'; silent = OUT/f'tmp_{index:02}.mp4'; final = OUT/f'clip_{index:02}.mp4'
     write_srt(rows, start, end, srt)
@@ -158,13 +137,34 @@ def render(clip_video, rows, c, index):
     if BURN_SUBS:
         s = str(srt).replace('\\','/').replace(':','\\:')
         vf += f",subtitles='{s}':force_style='FontSize=20,Alignment=2'"
-    cmd(['ffmpeg', '-y', '-i', str(clip_video), '-t', f'{duration:.3f}', '-vf', vf, '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', str(silent)])
-    cmd(['ffmpeg', '-y', '-i', str(silent), '-i', str(clip_video), '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-shortest', str(final)])
-    return final
-
-def run():
-    try:
+    
+    # Render with fast seeking for both video and audio extraction
+    cmd(['ffmpeg', '-y', '-ss', f'{start:.3f}', '-i', str(video_source), '-t', f'{duration:.3f}', '-vf', vf, '-c:v', 'libx264', '-crf', '23', '-preset', 'veryfast', str(silent)])
+    tmp_audio = OUT/f'tmp_audio_{index:02}.m4a'
+    cmd(['ffmpeg', '-y', '-ss', f'{start:.3f}', '-i', str(video_source), '-t', f'{duration:.3f}', '-vn', '-c:a', 'aac', str(tmp_audio)])
+    cmd(['ffmpeg', '-y', '-i', str(silent), '-i', str(tmp_audio), '-c', 'copy', str(final)])
         if not SOURCE_URL or not OPENROUTER_API_KEY: raise ValueError("Missing SOURCE_URL or OPENROUTER_API_KEY.")
+        job = SRC/str(int(time.time())); job.mkdir(parents=True, exist_ok=True)
+        print(f"Processing: {SOURCE_URL}")
+        
+        print("Downloading full video in low resolution...")
+        video_source = download_full_video(SOURCE_URL, job)
+        
+        with yt_dlp.YoutubeDL(ydl_common()) as ydl:
+            info = ydl.extract_info(SOURCE_URL, download=False)
+            time.sleep(random.randint(3, 7))
+        duration = float(info.get('duration', 0))
+
+        wav = job/'audio.wav'
+        cmd(['ffmpeg', '-y', '-i', str(video_source), '-ac', '1', '-ar', '16000', str(wav)])
+        
+        rows, detected = transcribe(wav)
+        candidates = find_candidates(rows, duration, MIN_LEN, MAX_LEN)
+        selected = review(candidates, rows, duration, MIN_LEN, MAX_LEN)
+        
+        rendered = []
+        for i, c in enumerate(selected, 1):
+            rendered.append(render(video_source, rows, c, i))
         job = SRC/str(int(time.time())); job.mkdir(parents=True, exist_ok=True)
         print(f"Processing: {SOURCE_URL}")
         with yt_dlp.YoutubeDL(ydl_common()) as ydl:
