@@ -157,7 +157,8 @@ def run():
         if not SOURCE_URL or not OPENROUTER_API_KEY: raise ValueError("Missing SOURCE_URL or OPENROUTER_API_KEY.")
         job = SRC/str(int(time.time())); job.mkdir(parents=True, exist_ok=True)
         print(f"Processing: {SOURCE_URL}")
-        info = json.loads(cmd(['yt-dlp', '--dump-single-json', '--no-playlist', SOURCE_URL], capture=True).stdout)
+        with yt_dlp.YoutubeDL(ydl_common()) as ydl:
+            info = ydl.extract_info(SOURCE_URL, download=False)
         duration = float(info.get('duration', 0))
         audio_source = download_audio_only(SOURCE_URL, job)
         wav = job/'audio.wav'
