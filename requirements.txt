@@ -4,3 +4,5 @@ faster-whisper>=1.0
 numpy>=1.26
 soundfile>=0.12
 pandas>=2.0
+yt-dlp
+
