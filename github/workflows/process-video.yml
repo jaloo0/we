@@ -1,0 +1,99 @@
+name: Process video
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: Public or short-lived signed URL to an input video
+        required: true
+        type: string
+      job_id:
+        description: Output job identifier
+        required: true
+        type: string
+      song_url:
+        description: Optional public/signed URL for music
+        required: false
+        type: string
+      top_n:
+        description: Number of moments (1-10)
+        required: false
+        default: "10"
+        type: string
+      clip_length:
+        description: Clip length in seconds
+        required: false
+        default: "15"
+        type: string
+      music_seconds:
+        description: Music break length
+        required: false
+        default: "4"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Download input video and optional song
+        env:
+          VIDEO_URL: ${{ inputs.video_url }}
+          SONG_URL: ${{ inputs.song_url }}
+          JOB_ID: ${{ inputs.job_id }}
+        run: |
+          mkdir -p data/uploads data/outputs "$RUNNER_TEMP/funnycut"
+          curl --fail --location --retry 3 "$VIDEO_URL" -o "data/uploads/input.mp4"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          job_id = "".join(c for c in os.environ["JOB_ID"] if c.isalnum() or c in "-_")[:100] or "job"
+          song_url = os.environ.get("SONG_URL","").strip()
+          song_path = None
+          if song_url:
+              import subprocess
+              song_path = str(Path("data/outputs") / job_id / "song_download")
+              Path(song_path).parent.mkdir(parents=True, exist_ok=True)
+              subprocess.run(["curl","--fail","--location","--retry","3",song_url,"-o",song_path],check=True)
+          out = Path("data/outputs") / job_id
+          out.mkdir(parents=True, exist_ok=True)
+          cfg = {
+            "job_id": job_id,
+            "video_path": str(Path("data/uploads/input.mp4").resolve()),
+            "output_dir": str(out.resolve()),
+            "top_n": int(os.getenv("INPUT_TOP_N","10")),
+            "clip_length": int(os.getenv("INPUT_CLIP_LENGTH","15")),
+            "music_seconds": int(os.getenv("INPUT_MUSIC_SECONDS","4")),
+            "min_gap": 10,
+            "song_path": str(Path(song_path).resolve()) if song_path else None
+          }
+          (out/"job.json").write_text(json.dumps(cfg, indent=2))
+          PY
+        shell: bash
+      - name: Run pipeline
+        env:
+          WHISPER_MODEL: base
+          INPUT_TOP_N: ${{ inputs.top_n }}
+          INPUT_CLIP_LENGTH: ${{ inputs.clip_length }}
+          INPUT_MUSIC_SECONDS: ${{ inputs.music_seconds }}
+        run: python pipeline.py --config "data/outputs/${{ inputs.job_id }}/job.json"
+      - name: Upload output artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: funnycut-${{ inputs.job_id }}
+          path: data/outputs/${{ inputs.job_id }}/
+          if-no-files-found: error
+          retention-days: 14
