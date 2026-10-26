@@ -38,33 +38,63 @@ with tab1:
         input_path = UPLOADS / safe_name
         input_path.write_bytes(uploaded.getbuffer())
         job_id = input_path.stem + "_" + str(int(__import__("time").time()))
+    if (uploaded or video_url) and st.button("🚀 Start processing", type="primary"):
+        # Unique Job ID
+        job_base = Path(uploaded.name).stem if uploaded else "url_job"
+        job_id = f"{job_base}_{int(__import__('time').time())}"
         job_dir = OUTPUTS / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
+
+        input_path = None
+        if uploaded:
+            input_path = UPLOADS / Path(uploaded.name).name
+            input_path.write_bytes(uploaded.getbuffer())
+
         song_path = None
         if new_song:
-        safe_name = Path(uploaded.name).name if uploaded else "remote_video"
-        input_path = UPLOADS / safe_name
-        if uploaded: input_path.write_bytes(uploaded.getbuffer())
-        job_id = (input_path.stem if uploaded else "url_job") + "_" + str(int(__import__("time").time()))
+            song_path = job_dir / Path(new_song.name).name
+            song_path.write_bytes(new_song.getbuffer())
+        elif song_choice != "No song":
+            song_path = SONGS / song_choice
+
         config = {
-            "job_id": job_id, "video_path": str(input_path), "output_dir": str(job_dir),
-            "top_n": int(top_n), "clip_length": int(clip_len), "music_seconds": int(music_seconds),
+            "job_id": job_id,
+            "video_path": str(input_path.resolve()) if input_path else None,
             "video_url": video_url if video_url else None,
-            "min_gap": int(min_gap), "song_path": str(song_path) if song_path else None
+            "output_dir": str(job_dir.resolve()),
+            "top_n": int(top_n),
+            "clip_length": int(clip_len),
+            "music_seconds": int(music_seconds),
+            "min_gap": int(min_gap),
+            "song_path": str(song_path.resolve()) if song_path else None
         }
         (job_dir / "job.json").write_text(json.dumps(config, indent=2))
+
         if run_github:
             token = os.getenv("GITHUB_TOKEN", os.getenv("GH_TOKEN", ""))
             if not token or not repo or "/" not in repo:
                 st.error("Set GITHUB_TOKEN in the Streamlit environment and enter owner/repo.")
+            elif not video_url:
+                st.error("GitHub Actions requires a public Video URL. Local uploads are not accessible to runners.")
             else:
                 api = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
-                # GitHub-hosted runners cannot read a local Streamlit upload. The workflow
-                # needs a reachable input URL or object-storage integration to fetch the video.
-                # GitHub Actions dispatch
-                r = requests.post(api, headers={"Authorization": f"Bearer {token}", "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28"}, json={"ref": branch, "inputs":{"video_url":video_url if video_url else "", "job_id":job_id}})
-                if r.status_code == 204: st.success("GitHub Actions workflow dispatched.")
-                else: st.error(f"GitHub API error {r.status_code}: {r.text}")
+                inputs = {
+                    "video_url": video_url,
+                    "job_id": job_id,
+                    "top_n": str(top_n),
+                    "clip_length": str(clip_len),
+                    "music_seconds": str(music_seconds)
+                }
+                r = requests.post(api, headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28"
+                }, json={"ref": branch, "inputs": inputs})
+                if r.status_code == 204:
+                    st.success("GitHub Actions workflow dispatched.")
+                else:
+                    st.error(f"GitHub API error {r.status_code}: {r.text}")
+        else:
             st.info("Processing locally. This may take several minutes on the first run while speech models download.")
             try:
                 result = subprocess.run(
@@ -78,11 +108,7 @@ with tab1:
                     st.error("Processing failed.")
                     st.code(result.stderr[-6000:])
             except subprocess.TimeoutExpired:
-                st.error("Processing exceeded the 6-hour dashboard limit. Run pipeline.py from a terminal instead.")
-
-with tab2:
-    jobs = sorted([p for p in OUTPUTS.iterdir() if p.is_dir()], key=lambda p:p.stat().st_mtime, reverse=True)
-    if not jobs: st.info("No jobs yet. Upload a video in New job.")
+                st.error("Processing exceeded the dashboard limit.")
     for job in jobs:
         with st.expander(job.name, expanded=False):
             result_file = job / "moments.json"
