@@ -25,6 +25,7 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["New job", "Jobs & outputs", "Music library"])
 with tab1:
     uploaded = st.file_uploader("Upload a video", type=["mp4","mov","mkv","webm","avi","m4v"])
+    video_url = st.text_input("Or enter a YouTube / Video URL", placeholder="https://...")
     song_files = sorted([p for p in SONGS.iterdir() if p.is_file() and p.suffix.lower() in (".mp3",".wav",".m4a",".aac",".ogg")])
     song_choice = st.selectbox("Music break song", ["No song"] + [p.name for p in song_files])
     new_song = st.file_uploader("Or upload a song for this job", type=["mp3","wav","m4a","aac","ogg"], key="job_song")
@@ -41,13 +42,14 @@ with tab1:
         job_dir.mkdir(parents=True, exist_ok=True)
         song_path = None
         if new_song:
-            song_path = job_dir / Path(new_song.name).name
-            song_path.write_bytes(new_song.getbuffer())
-        elif song_choice != "No song":
-            song_path = SONGS / song_choice
+        safe_name = Path(uploaded.name).name if uploaded else "remote_video"
+        input_path = UPLOADS / safe_name
+        if uploaded: input_path.write_bytes(uploaded.getbuffer())
+        job_id = (input_path.stem if uploaded else "url_job") + "_" + str(int(__import__("time").time()))
         config = {
             "job_id": job_id, "video_path": str(input_path), "output_dir": str(job_dir),
             "top_n": int(top_n), "clip_length": int(clip_len), "music_seconds": int(music_seconds),
+            "video_url": video_url if video_url else None,
             "min_gap": int(min_gap), "song_path": str(song_path) if song_path else None
         }
         (job_dir / "job.json").write_text(json.dumps(config, indent=2))
@@ -59,13 +61,10 @@ with tab1:
                 api = f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches"
                 # GitHub-hosted runners cannot read a local Streamlit upload. The workflow
                 # needs a reachable input URL or object-storage integration to fetch the video.
-                input_url = st.text_input("Publicly reachable video URL for GitHub runner", key="gh_url")
-                st.warning("For GitHub Actions, upload the video to accessible object storage and provide its signed/public URL. A local file path is not accessible to GitHub.")
-                if input_url and st.button("Dispatch GitHub workflow"):
-                    r = requests.post(api, headers={"Authorization": f"Bearer {token}", "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28"}, json={"ref": branch, "inputs":{"video_url":input_url, "job_id":job_id}})
-                    if r.status_code == 204: st.success("GitHub Actions workflow dispatched.")
-                    else: st.error(f"GitHub API error {r.status_code}: {r.text}")
-        else:
+                # GitHub Actions dispatch
+                r = requests.post(api, headers={"Authorization": f"Bearer {token}", "Accept":"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28"}, json={"ref": branch, "inputs":{"video_url":video_url if video_url else "", "job_id":job_id}})
+                if r.status_code == 204: st.success("GitHub Actions workflow dispatched.")
+                else: st.error(f"GitHub API error {r.status_code}: {r.text}")
             st.info("Processing locally. This may take several minutes on the first run while speech models download.")
             try:
                 result = subprocess.run(
