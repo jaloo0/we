@@ -2,6 +2,8 @@
 """Extract audio, transcribe, rank likely funny moments, and render a compilation."""
 import argparse, json, math, os, re, shutil, subprocess, sys
 from pathlib import Path
+from urllib.parse import urlparse
+
 
 def run(cmd):
     p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -10,6 +12,29 @@ def run(cmd):
     return p.stdout
 
 def probe_duration(path):
+def download_video(video_url, output_path_dir):
+    output_path_dir = Path(output_path_dir)
+    output_path_dir.mkdir(parents=True, exist_ok=True)
+    template = str(output_path_dir / "source_video.%(ext)s")
+    parsed = urlparse(video_url)
+    if "youtube.com" in parsed.netloc or "youtu.be" in parsed.netloc:
+        subprocess.run([
+            "yt-dlp", "--no-playlist", "-f", "bestvideo*+bestaudio/best",
+            "--merge-output-format", "mp4", "-o", template, video_url
+        ], check=True)
+    else:
+        import requests
+        response = requests.get(video_url, stream=True, timeout=(15, 120))
+        response.raise_for_status()
+        video_path = output_path_dir / "source_video.mp4"
+        with open(video_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk: f.write(chunk)
+        return str(video_path)
+    downloaded_files = list(output_path_dir.glob("source_video.*"))
+    if not downloaded_files: raise RuntimeError("Video download failed.")
+    return str(downloaded_files[0])
+
     raw = run(["ffprobe","-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",str(path)])
     return max(0.0, float(raw.strip()))
 
@@ -151,7 +176,12 @@ def main():
     ap.add_argument("--config",required=True)
     args=ap.parse_args()
     cfg=json.loads(Path(args.config).read_text())
-    video=Path(cfg["video_path"]).resolve()
+    video_path_str = cfg.get("video_path")
+    video_url = cfg.get("video_url")
+    if video_url and (not video_path_str or not Path(video_path_str).exists()):
+        print(f"Downloading video from {video_url}...")
+        video_path_str = download_video(video_url, out)
+    video=Path(video_path_str).resolve()
     out=Path(cfg["output_dir"]).resolve(); out.mkdir(parents=True,exist_ok=True)
     if not video.exists(): raise FileNotFoundError(video)
     duration=probe_duration(video)
