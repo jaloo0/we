@@ -57,8 +57,8 @@ jobs:
           INPUT_TOP_N: ${{ inputs.top_n }}
           INPUT_CLIP_LENGTH: ${{ inputs.clip_length }}
           INPUT_MUSIC_SECONDS: ${{ inputs.music_seconds }}
+        run: |
           mkdir -p data/uploads data/outputs
-          # Download is handled inside pipeline.py if video_url is present in job.json
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -73,7 +73,7 @@ jobs:
               subprocess.run(["curl","--fail","--location","--retry","3",song_url,"-o",song_path],check=True)
           cfg = {
             "job_id": job_id,
-            "video_path": str(Path("data/uploads/input.mp4").resolve()) if not os.environ.get("VIDEO_URL") else None,
+            "video_path": None,
             "video_url": os.environ.get("VIDEO_URL"),
             "output_dir": str(out.resolve()),
             "top_n": int(os.environ.get("INPUT_TOP_N","10")),
