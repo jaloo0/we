@@ -10,8 +10,8 @@ OUTPUTS = DATA / "outputs"
 SONGS = DATA / "songs"
 for p in (UPLOADS, OUTPUTS, SONGS): p.mkdir(parents=True, exist_ok=True)
 
-st.set_page_config(page_title="FunnyCut Studio", page_icon="🎬", layout="wide")
-st.title("🎬 FunnyCut Studio")
+st.set_page_config(page_title="FunnyCut Studio", page_icon="ð¬", layout="wide")
+st.title("ð¬ FunnyCut Studio")
 st.caption("Upload a video, find likely funny moments, and render a compilation with short music breaks.")
 
 with st.sidebar:
@@ -32,7 +32,7 @@ with tab1:
     workflow = st.text_input("Workflow file", value="process-video.yml")
     branch = st.text_input("Branch", value="main")
     run_github = st.checkbox("Dispatch processing to GitHub Actions", value=False)
-    if uploaded and st.button("🚀 Start processing", type="primary"):
+    if uploaded and st.button("ð Start processing", type="primary"):
         safe_name = Path(uploaded.name).name
         input_path = UPLOADS / safe_name
         input_path.write_bytes(uploaded.getbuffer())
@@ -52,7 +52,7 @@ with tab1:
         }
         (job_dir / "job.json").write_text(json.dumps(config, indent=2))
         if run_github:
-            token = os.getenv("GH_TOKEN", "")
+            token = os.getenv("GITHUB_TOKEN", os.getenv("GH_TOKEN", ""))
             if not token or not repo or "/" not in repo:
                 st.error("Set GITHUB_TOKEN in the Streamlit environment and enter owner/repo.")
             else:
@@ -109,4 +109,4 @@ with tab3:
         st.success(f"Saved {dest.name}")
     if song_files:
         st.write("Available tracks:")
-        for p in song_files: st.write("🎵", p.name)
+        for p in song_files: st.write("ðµ", p.name)
