@@ -52,7 +52,7 @@ with tab1:
         }
         (job_dir / "job.json").write_text(json.dumps(config, indent=2))
         if run_github:
-            token = os.getenv("GITHUB_TOKEN", "")
+            token = os.getenv("GH_TOKEN", "")
             if not token or not repo or "/" not in repo:
                 st.error("Set GITHUB_TOKEN in the Streamlit environment and enter owner/repo.")
             else:
